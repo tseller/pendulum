@@ -108,6 +108,7 @@ function frame(now) {
   }
   drawSwing()
   drawCursor()
+  window.pendulumNow = { Er: state.Er, t: state.t, ...state.sol.at(nowTau()), w0: state.w0, T: state.sol.mode.T / state.w0 } // read by the prod checks
   requestAnimationFrame(frame)
 }
 
