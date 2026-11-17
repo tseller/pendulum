@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pendulum by quadrature with the AGM</title>
+<meta name="description" content="Pick a pendulum's energy and watch it swing — from tiny swings to going over the top — with its angle and speed charted over time. After Richard Siemon's paper.">
+<style>
+  :root {
+    --bg: #fbfaf7; --ink: #1d232b; --muted: #5d6673; --line: #d9dde3; --card: #ffffff;
+    --osc: #1f77d0; --rot: #1e9b55; --sep: #d23a3a; --dot: #1d232b; --accent: #1f77d0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171c; --ink: #e8eaee; --muted: #9aa3ae; --line: #2c323b; --card: #1b1f25; --dot: #e8eaee; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  main { max-width: 1080px; margin: 0 auto; padding: 18px 16px 40px; }
+  h1 { font-size: 1.45rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .sub a { color: inherit; }
+  .grid { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  label.big { display: block; font-weight: 600; margin-bottom: 2px; }
+  .hint { color: var(--muted); font-size: .86rem; }
+  input[type=range] { width: 100%; margin: 10px 0 2px; accent-color: var(--accent); height: 28px; }
+  .scale { display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .chips button, .ctl button, select, input[type=number] {
+    font: inherit; font-size: .86rem; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line);
+    background: transparent; color: var(--ink); cursor: pointer;
+  }
+  input[type=number] { width: 120px; border-radius: 8px; cursor: text; }
+  .chips button.on { border-color: var(--accent); color: var(--accent); }
+  .readout { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin-top: 12px; font-size: .92rem; }
+  .readout dt { color: var(--muted); }
+  .readout dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; color: #fff; font-size: .8rem; font-weight: 600; }
+  canvas { display: block; width: 100%; }
+  #swing { aspect-ratio: 1 / 1; max-height: 380px; }
+  #chart { height: 360px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: .82rem; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+  .legend i.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dot); }
+  details { margin-top: 18px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .math { font-family: "Cambria Math", "STIX Two Math", Georgia, serif; }
+  footer { margin-top: 22px; color: var(--muted); font-size: .82rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pendulum by quadrature with the AGM</h1>
+  <p class="sub">Pick an energy and watch the pendulum swing — from a gentle swing, to nearly stopping at the top, to going right over. The motion is computed with the method in Richard Siemon’s paper <em>“Pendulum by quadrature with the AGM”</em>.</p>
+
+  <div class="grid">
+    <section class="card">
+      <label class="big" for="energy">Energy</label>
+      <div class="hint">As a fraction of the energy needed to just reach the top (<span class="math">E<sub>r</sub> = E / 2mgL</span>). Below 1 it swings back and forth; above 1 it goes over the top.</div>
+      <input id="energy" type="range" min="0" max="1000" step="1" aria-label="Energy">
+      <div class="scale"><span>0</span><span>0.5</span><span>1 (top)</span><span>2</span><span>3</span></div>
+
+      <div class="row chips" id="presets"></div>
+      <div class="row ctl">
+        <span class="hint">Exact <span class="math">E<sub>r</sub></span></span>
+        <input id="erExact" type="number" min="0.0001" max="20" step="0.001" inputmode="decimal">
+      </div>
+
+      <dl class="readout">
+        <dt>Motion</dt><dd id="rMode"></dd>
+        <dt>Highest angle</dt><dd id="rTheta"></dd>
+        <dt>Period</dt><dd id="rPeriod"></dd>
+        <dt>vs. tiny swings</dt><dd id="rRatio"></dd>
+        <dt>Top speed</dt><dd id="rSpeed"></dd>
+      </dl>
+
+      <div class="row ctl">
+        <button id="play">Pause</button>
+        <label class="hint">Speed
+          <select id="rate"><option value="1">real time</option><option value="0.5">½×</option><option value="0.25">¼×</option></select>
+        </label>
+        <label class="hint">Length
+          <select id="len"></select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <canvas id="swing" aria-label="Pendulum animation"></canvas>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <canvas id="chart" aria-label="Angle and angular speed over time"></canvas>
+    <div class="legend">
+      <span><i id="lgAngle"></i>angle θ (degrees)</span>
+      <span><i style="background:#e08a1e"></i>angular speed dθ/dt (degrees per second)</span>
+      <span><i class="dot"></i>Dick’s 16 computed points per quarter (Suite16)</span>
+      <span><i style="background:var(--muted)"></i>now</span>
+    </div>
+  </section>
+
+  <details>
+    <summary>How the motion is computed</summary>
+    <p>Energy is conserved, so at every angle the speed is known (Eq. 7): <span class="math">θ̇/ω₀ = 2√(E<sub>r</sub> − (1 − cos θ)/2)</span>, with <span class="math">ω₀ = √(g/L)</span>. Time is the integral of the “pace” <span class="math">1/θ̇</span> over angle (Eq. 8).</p>
+    <p>The time to the first turning point — a quarter of a swing, or half a turn — is the complete elliptic integral, computed exactly with Gauss’s arithmetic-geometric mean (Eqs. 10–11): <span class="math">ω<sub>osc</sub>/ω₀ = AGM(1, √(1 − E<sub>r</sub>))</span> and <span class="math">ω<sub>rot</sub>/ω₀ = 2√E<sub>r</sub> · AGM(1, √(1 − 1/E<sub>r</sub>))</span>.</p>
+    <p>The times in between come from Simpson’s rule on the paper’s “Suite16” angles (fractions 1/8 ×7, then halving down to 1/2048, so the steps crowd in near the turning point). The dots on the chart are those 16 points. For a smooth animation each Suite16 step is split into 8 smaller Simpson steps, and the rest of each period is filled in by the turning-point symmetry of Table I. At exactly <span class="math">E<sub>r</sub> = 1</span> the page uses the separatrix <span class="math">θ = 2 arctan(sinh ω₀t)</span>: the pendulum creeps up to the top and never quite arrives.</p>
+    <p>Checked against a plain step-by-step (Runge–Kutta) integration of <span class="math">θ̈ = −ω₀² sin θ</span>: the periods agree to better than one part in a million — see <a href="verify.mjs">verify.mjs</a>.</p>
+  </details>
+
+  <footer>After Richard Siemon, “Pendulum by quadrature with the AGM” (draft, June 2026). Frictionless pendulum, released from the bottom (θ = 0) moving to the right.</footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
